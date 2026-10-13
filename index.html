@@ -364,16 +364,13 @@ svg.sky{width:100%;max-height:40vh;max-height:40dvh;touch-action:manipulation;ba
   </div>
   <button class="btn ghost" id="gb">Lanjut ➜</button>
 </div></section>
+
 <!-- VIDEO -->
-<section class="s" data-id="video"><div class="card" style="padding-top:22px;padding-bottom:20px">
+<section class="s" data-id="video"><div class="card">
   <div class="eyebrow">Video Kenangan</div>
-  <div style="position:relative;width:100%;height:calc(100dvh - 330px);min-height:360px;max-height:620px;margin:10px 0;border-radius:12px;overflow:hidden;background:#fff">
-    <iframe src="https://www.instagram.com/reel/C94coLFSkvn/embed" style="position:absolute;inset:0;width:100%;height:100%;border:0" loading="lazy" allowfullscreen></iframe>
-  </div>
-  <div>
-    <a class="btn" href="https://www.instagram.com/reel/C94coLFSkvn/" target="_blank" rel="noopener">▶ Buka Full di Instagram</a>
-    <button class="btn primary" id="vb">Lanjut ➜</button>
-  </div>
+  <h1 class="flat" style="font-size:1.9rem">Tonton Yuk!</h1>
+  <video id="vid-main" src="video/kenangan.mp4" controls playsinline preload="metadata" style="width:100%;max-height:58dvh;border-radius:12px;margin:12px 0;background:#000"></video>
+  <button class="btn primary" id="vb">Lanjut ➜</button>
 </div></section>
 
 <!-- RODA (BARU) -->
@@ -495,16 +492,16 @@ const clearTimers = () => { timers.forEach(i => { clearTimeout(i); clearInterval
 let appData = {
   pass: "2023",
   introText: "Halo semuanya! Rasanya baru kemarin kita pakai almamater pertama kali di tahun 2023, bingung nyari kelas, dan ngerjain tugas kelompok bareng. Lewat binder kenangan virtual ini, mari kita buka kembali perjalanan seru kita di kampus tercinta!",
-  boardImg: "https://placehold.co/600x400/4caf50/ffffff?text=Foto+Rahasia+Kelas",
+  boardImg: "foto/papan.jpg",
   letter: "Teruntuk teman-teman Kelas A MBS Angkatan 2023,\n\nTerima kasih sudah menjadi keluarga keduaku selama masa kuliah ini. Dari pusingnya mikirin IPK, revisi makalah dadakan, sampai nongkrong ketawa-ketiwi di kantin.\n\nJalan kita ke depan mungkin berbeda, tapi memori di kelas ini akan selalu ada. Sukses untuk karir dan impian kita semua!\n\nTertanda,\nTeman Sekelasmu 🤍",
   finalText: "Terima kasih atas waktu 3.5 - 4 tahun yang luar biasa. See you on top, MBS A 2023! Jangan lupa bahagia!",
   gallery: [
-    { src: "https://placehold.co/400x500/ff9a9e/ffffff?text=Maba", cap: "Awal Masuk" },
-    { src: "https://placehold.co/400x500/a1c4fd/ffffff?text=Nugas", cap: "Kerja Kelompok" },
-    { src: "https://placehold.co/400x500/84fab0/ffffff?text=Kantin", cap: "Nongkrong" },
-    { src: "https://placehold.co/400x500/cfd9df/ffffff?text=Ujian", cap: "Minggu Tenang" },
-    { src: "https://placehold.co/400x500/fccb90/ffffff?text=Wisuda", cap: "Lulus Bareng!" }
-  ],
+  { src: "foto/1.jpg", cap: "Awal Masuk" },
+  { src: "foto/2.jpg", cap: "Kerja Kelompok" },
+  { src: "foto/3.jpg", cap: "Nongkrong" },
+  { src: "foto/4.jpg", cap: "Minggu Tenang" },
+  { src: "foto/5.jpg", cap: "Lulus Bareng!" }
+],
   timeline: [
     { t: "2023 · Maba", d: "Pertama kali pakai almamater, kenalan, dan nyasar cari ruang kelas." },
     { t: "2024 · Mulai Seru", d: "Tugas kelompok, organisasi, dan nongkrong di coffee shop atau kantin jadi rutinitas." },
@@ -1384,7 +1381,8 @@ const tick = () => {
 
 /* ================= VIDEO ================= */
 initFn.video = () => {
-  if (musicOn) toggleMusic(); // jeda musik supaya tidak bentrok dengan suara video
+  if (musicOn) toggleMusic();
+  const v = $('vid-main'); v.pause(); v.currentTime = 0;
   unlock();
 };
 onTap('vb', advance);
