@@ -495,7 +495,7 @@ let appData = {
   boardImg: "foto/papan.jpg",
   letter: "Teruntuk teman-teman Kelas A MBS Angkatan 2023,\n\nTerima kasih sudah menjadi keluarga keduaku selama masa kuliah ini. Dari pusingnya mikirin IPK, revisi makalah dadakan, sampai nongkrong ketawa-ketiwi di kantin.\n\nJalan kita ke depan mungkin berbeda, tapi memori di kelas ini akan selalu ada. Sukses untuk karir dan impian kita semua!\n\nTertanda,\nKita Semua 🤍",
   finalText: "Terima kasih atas waktu 3.5 - 4 tahun yang luar biasa. See you on top, MBS A 2023! Jangan lupa bahagia!",
-    gallery: [
+  gallery: [
     { src: "foto/1.jpg", cap: "Keluarga Kelas A" },
     { src: "foto/2.jpg", cap: "Kebersamaan Kita" },
     { src: "foto/3.jpg", cap: "Saling Support" },
@@ -515,7 +515,7 @@ let appData = {
     { t: "2025 · Makin Sibuk", d: "Magang, kkl, dan begadang bareng demi deadline." },
     { t: "2026 · Perjuangan Akhir", d: "Proposal, skripsi, revisi, sidang... dan insya allah kita cepat lulus nanti aamiin!" }
   ],
-    awards: [
+  awards: [
     ["📚", "Si Paling Rajin"], ["☕", "Raja Kantin"], ["⏰", "Ratu Deadline"],
     ["😴", "Master Tidur di Kelas"], ["📸", "Fotografer Kelas"], ["🤝", "Teman Terbaik"]
   ],
@@ -526,7 +526,7 @@ let appData = {
 // CSV parser lengkap (mendukung tanda kutip, koma di dalam kutip, baris baru)
 function parseCSVRows(text) {
   const rows = []; let row = [], cell = '', q = false;
-  text = text.replace(/^﻿/, '');
+  text = text.replace(/^\uFEFF/, '');
   for (let i = 0; i < text.length; i++) {
     const c = text[i];
     if (q) {
@@ -564,7 +564,7 @@ function applyCSV(text) {
     }
   }
   if (g.length) appData.gallery = g;
-if (bg.length) appData.bgm = bg;
+  if (bg.length) appData.bgm = bg;
   if (tl.length) appData.timeline = tl;
   if (aw.length >= 2) appData.awards = aw.slice(0, 8);
   Object.assign(appData.gifs, gifs);
@@ -585,34 +585,72 @@ async function initData() {
   }, 1200);
 }
 
-const audio = new Audio();
-let musicOn = false;
-let trk = 0;
+/* ================= MUSIK (2 player, tanpa jeda) ================= */
+const players = [new Audio(), new Audio()];
+let musicOn = false, cp = 0, trk = 0, primed = false;
 const playlist = () => Array.isArray(appData.bgm) ? appData.bgm : (appData.bgm ? [appData.bgm] : []);
+const onVideo = () => ids[cur] === 'video';
+const setSrc = (p, i) => {
+  const L = playlist(); if (!L.length) return;
+  p.src = L[(i % L.length + L.length) % L.length];
+  p.preload = 'auto'; p.load();
+};
+
 function loadTrack(i) {
   const L = playlist(); if (!L.length) return;
-  trk = (i + L.length) % L.length;
-  audio.src = L[trk];
-  if (musicOn) audio.play().catch(() => {});
+  trk = (i % L.length + L.length) % L.length;
+  players.forEach(p => p.pause());
+  cp = 0; setSrc(players[0], trk); setSrc(players[1], trk + 1);
+  if (musicOn && !onVideo()) players[0].play().catch(() => {});
 }
-audio.onended = () => loadTrack(trk + 1);
+
+// Lagu berikutnya mulai 0.35 detik sebelum lagu sekarang habis → tanpa jeda
+setInterval(() => {
+  const a = players[cp];
+  if (a.paused || !a.duration || !isFinite(a.duration)) return;
+  if (a.duration - a.currentTime <= 0.45) {
+    const n = players[1 - cp], old = a;
+    trk = (trk + 1) % playlist().length;
+    n.currentTime = 0; n.play().catch(() => {});
+    cp = 1 - cp;
+    setTimeout(() => { old.pause(); setSrc(old, trk + 1); }, 800);
+  }
+}, 50);
+
+function toggleMusic() {
+  musicOn = !musicOn;
+  if (musicOn && !primed) { // "buka kunci" player ke-2 supaya boleh autoplay di HP
+    primed = true;
+    players[1].play().then(() => players[1].pause()).catch(() => {});
+  }
+  if (musicOn && !onVideo()) players[cp].play().catch(() => {});
+  else players.forEach(p => p.pause());
+  $('mb').classList.toggle('spin', musicOn && !onVideo());
+  $('mb').textContent = musicOn ? '🎵' : '🔇';
+}
+
+// Dipanggil tiap pindah slide
+function syncAudio() {
+  if (onVideo()) {                    // masuk slide video → musik berhenti
+    players.forEach(p => p.pause());
+    $('mb').classList.remove('spin');
+  } else {                            // keluar slide video → video berhenti, musik lanjut
+    $('vid-main').pause();
+    if (musicOn) { players[cp].play().catch(() => {}); $('mb').classList.add('spin'); }
+  }
+}
+$('mb').onclick = toggleMusic;
+
 function applyDataToDOM() {
   const img = $('reveal-img');
   img.onerror = () => { img.removeAttribute('src'); img.style.background = 'linear-gradient(135deg,#a5d6a7,#fff59d)'; };
   img.src = appData.boardImg;
   $('fin').textContent = appData.finalText;
   if (playlist().length) {
-  audio.loop = false;
-  loadTrack(0);
-  $('mb').style.display = 'grid'; $('mb').textContent = '🔇';
+    loadTrack(0);
+    $('mb').style.display = 'grid'; $('mb').textContent = '🔇';
   }
 }
-function toggleMusic() {
-  musicOn = !musicOn;
-  if (musicOn) { audio.play().catch(() => {}); $('mb').classList.add('spin'); $('mb').textContent = '🎵'; }
-  else { audio.pause(); $('mb').classList.remove('spin'); $('mb').textContent = '🔇'; }
-}
-$('mb').onclick = toggleMusic;
 
 /* ================= GIF TENOR ================= */
 // Menerima: ID Tenor (angka), link tenor.com/view/...-gif-ID, atau link langsung .gif/.webp
@@ -741,6 +779,7 @@ function show(n) {
   updateNav();
   mountGifs(n);
   if (initFn[ids[n]]) initFn[ids[n]]();
+  syncAudio();
   if (sc.hasAttribute('data-skip') && n === maxReached) {
     later(() => {
       if (cur !== n || n < maxReached) return;
@@ -1161,7 +1200,7 @@ initFn.frame = () => {
   const W = cv.width = 1080, H = cv.height = 1350, me = ++frameLoop;
   let src = null, mirror = false, style = 0, stk = '🎓', stream = null, facing = 'user', dirty = true;
   const STY = ['Polaroid', 'Wisuda', 'Binder', 'Pink', 'Neon', 'Film', 'Koran', 'Emas'];
-const STK = ['🎓', '✨', '💖', '📚', '🥳', '🎉', '🌸', '⭐', ''];
+  const STK = ['🎓', '✨', '💖', '📚', '🥳', '🎉', '🌸', '⭐', ''];
   const EMO = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
 
   const mk = (box, arr, get, set) => {
@@ -1180,10 +1219,10 @@ const STK = ['🎓', '✨', '💖', '📚', '🥳', '🎉', '🌸', '⭐', ''];
   const txt = (t, x, y, size, color, font) => { ctx.font = '700 ' + size + 'px ' + (font || 'Caveat, cursive'); ctx.fillStyle = color; ctx.textAlign = 'center'; ctx.fillText(t, x, y); };
   const photo = (x, y, w, h, round) => {
     ctx.save(); ctx.beginPath();
-if (round === 'circle') ctx.arc(x + w / 2, y + h / 2, w / 2, 0, 7);
-else if (round === 'round') rr(x, y, w, h, 50);
-else ctx.rect(x, y, w, h);
-ctx.clip();
+    if (round === 'circle') ctx.arc(x + w / 2, y + h / 2, w / 2, 0, 7);
+    else if (round === 'round') rr(x, y, w, h, 50);
+    else ctx.rect(x, y, w, h);
+    ctx.clip();
     const iw = src && (src.videoWidth || src.naturalWidth || src.width), ih = src && (src.videoHeight || src.naturalHeight || src.height);
     if (iw && ih) {
       const s = Math.max(w / iw, h / ih), dw = iw * s, dh = ih * s;
@@ -1205,129 +1244,129 @@ ctx.clip();
   const tape = (x, y, deg) => { ctx.save(); ctx.translate(x, y); ctx.rotate(deg); ctx.fillStyle = 'rgba(255,182,193,.85)'; ctx.fillRect(-110, -32, 220, 64); ctx.restore(); };
 
   const T0 = new Date('2023-09-26T07:00:00+07:00'), pad = n => String(n).padStart(2, '0');
-const SANS = 'Quicksand, sans-serif', SERIF = 'Georgia, serif';
-const grad = (...c) => { const g = ctx.createLinearGradient(0, 0, W, H); c.forEach((col, i) => g.addColorStop(i / (c.length - 1), col)); return g; };
+  const SANS = 'Quicksand, sans-serif', SERIF = 'Georgia, serif';
+  const grad = (...c) => { const g = ctx.createLinearGradient(0, 0, W, H); c.forEach((col, i) => g.addColorStop(i / (c.length - 1), col)); return g; };
 
-const timerBox = (cx, y, w, th) => {
-  let r = Math.max(0, Date.now() - T0);
-  const d = Math.floor(r / 864e5); r %= 864e5;
-  const h = Math.floor(r / 36e5); r %= 36e5;
-  const m = Math.floor(r / 6e4); r %= 6e4;
-  const vals = [d, pad(h), pad(m), pad(Math.floor(r / 1e3))], labs = ['HARI', 'JAM', 'MNT', 'DTK'];
-  const gap = 16, bw = (w - gap * 3) / 4;
-  vals.forEach((v, i) => {
-    const x = cx - w / 2 + i * (bw + gap);
-    ctx.fillStyle = th.bg; rr(x, y, bw, 130, 22); ctx.fill();
-    ctx.lineWidth = 4; ctx.strokeStyle = th.line; ctx.setLineDash([14, 9]); ctx.stroke(); ctx.setLineDash([]);
-    txt(String(v), x + bw / 2, y + 76, 60, th.num, SANS);
-    txt(labs[i], x + bw / 2, y + 112, 24, th.lab, SANS);
-  });
-  txt('Sejak 26 September 2023', cx, y + 176, 38, th.lab, SANS);
-};
+  const timerBox = (cx, y, w, th) => {
+    let r = Math.max(0, Date.now() - T0);
+    const d = Math.floor(r / 864e5); r %= 864e5;
+    const h = Math.floor(r / 36e5); r %= 36e5;
+    const m = Math.floor(r / 6e4); r %= 6e4;
+    const vals = [d, pad(h), pad(m), pad(Math.floor(r / 1e3))], labs = ['HARI', 'JAM', 'MNT', 'DTK'];
+    const gap = 16, bw = (w - gap * 3) / 4;
+    vals.forEach((v, i) => {
+      const x = cx - w / 2 + i * (bw + gap);
+      ctx.fillStyle = th.bg; rr(x, y, bw, 130, 22); ctx.fill();
+      ctx.lineWidth = 4; ctx.strokeStyle = th.line; ctx.setLineDash([14, 9]); ctx.stroke(); ctx.setLineDash([]);
+      txt(String(v), x + bw / 2, y + 76, 60, th.num, SANS);
+      txt(labs[i], x + bw / 2, y + 112, 24, th.lab, SANS);
+    });
+    txt('Sejak 26 September 2023', cx, y + 176, 38, th.lab, SANS);
+  };
 
-const STYLES = [
-  { // 0 Polaroid
-    cx: 540, p: [130, 130, 820, 700], shape: 'rect', capY: 930, capC: '#5d4037', tY: 975, w: 820,
-    foot: ['Memory Book · 2023', 1235, '#8d6e63'],
-    th: { bg: '#fff', line: '#64b5f6', num: '#1976d2', lab: '#ff4081' },
-    bg() {
-      ctx.fillStyle = grad('#ffe0b2', '#f8bbd0', '#b3e5fc'); ctx.fillRect(0, 0, W, H);
-      ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.25)'; ctx.shadowBlur = 40; ctx.shadowOffsetY = 16; ctx.fillStyle = '#fff'; rr(80, 80, 920, 1190, 18); ctx.fill(); ctx.restore();
+  const STYLES = [
+    { // 0 Polaroid
+      cx: 540, p: [130, 130, 820, 700], shape: 'rect', capY: 930, capC: '#5d4037', tY: 975, w: 820,
+      foot: ['Memory Book · 2023', 1235, '#8d6e63'],
+      th: { bg: '#fff', line: '#64b5f6', num: '#1976d2', lab: '#ff4081' },
+      bg() {
+        ctx.fillStyle = grad('#ffe0b2', '#f8bbd0', '#b3e5fc'); ctx.fillRect(0, 0, W, H);
+        ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.25)'; ctx.shadowBlur = 40; ctx.shadowOffsetY = 16; ctx.fillStyle = '#fff'; rr(80, 80, 920, 1190, 18); ctx.fill(); ctx.restore();
+      },
+      top() { tape(W / 2, 80, -.08); }
     },
-    top() { tape(W / 2, 80, -.08); }
-  },
-  { // 1 Wisuda
-    cx: 540, p: [190, 210, 700, 700], shape: 'circle', capY: 1010, capC: '#fff', tY: 1050, w: 880,
-    foot: ['Kelas A · Angkatan 2023', 1290, '#ffe082'],
-    th: { bg: 'rgba(255,255,255,.14)', line: '#ffd54f', num: '#fff', lab: '#ffd54f' },
-    bg() {
-      ctx.fillStyle = grad('#1a237e', '#7b1fa2'); ctx.fillRect(0, 0, W, H);
-      for (let i = 0; i < 40; i++) { ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.beginPath(); ctx.arc((i * 263) % W, (i * 479) % H, 3 + (i % 4) * 2, 0, 7); ctx.fill(); }
-      ctx.fillStyle = '#ffd54f'; ctx.beginPath(); ctx.arc(540, 560, 385, 0, 7); ctx.fill();
-      txt('WISUDA', W / 2, 150, 120, '#ffd54f');
-    }
-  },
-  { // 2 Binder
-    cx: 580, p: [200, 180, 760, 660], shape: 'rect', capY: 935, capC: '#e91e63', tY: 975, w: 760,
-    foot: ['Kelas A MBS · 2023', 1240, '#8d6e63'],
-    th: { bg: '#fff', line: '#64b5f6', num: '#1976d2', lab: '#ff4081' },
-    bg() {
-      ctx.fillStyle = '#fffdf5'; ctx.fillRect(0, 0, W, H);
-      ctx.fillStyle = '#b3e5fc'; for (let y = 120; y < H; y += 60) ctx.fillRect(0, y, W, 3);
-      ctx.fillStyle = '#ffcdd2'; ctx.fillRect(130, 0, 6, H);
-      ctx.fillStyle = '#d7ccc8'; for (let y = 100; y < H; y += 180) { ctx.beginPath(); ctx.arc(60, y, 26, 0, 7); ctx.fill(); }
-      ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.2)'; ctx.shadowBlur = 24; ctx.shadowOffsetY = 10; ctx.fillStyle = '#fff'; ctx.fillRect(180, 160, 800, 700); ctx.restore();
+    { // 1 Wisuda
+      cx: 540, p: [190, 210, 700, 700], shape: 'circle', capY: 1010, capC: '#fff', tY: 1050, w: 880,
+      foot: ['Kelas A · Angkatan 2023', 1290, '#ffe082'],
+      th: { bg: 'rgba(255,255,255,.14)', line: '#ffd54f', num: '#fff', lab: '#ffd54f' },
+      bg() {
+        ctx.fillStyle = grad('#1a237e', '#7b1fa2'); ctx.fillRect(0, 0, W, H);
+        for (let i = 0; i < 40; i++) { ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.beginPath(); ctx.arc((i * 263) % W, (i * 479) % H, 3 + (i % 4) * 2, 0, 7); ctx.fill(); }
+        ctx.fillStyle = '#ffd54f'; ctx.beginPath(); ctx.arc(540, 560, 385, 0, 7); ctx.fill();
+        txt('WISUDA', W / 2, 150, 120, '#ffd54f');
+      }
     },
-    top() { tape(580, 160, -.05); }
-  },
-  { // 3 Pink
-    cx: 540, p: [120, 120, 840, 700], shape: 'round', capY: 930, capC: '#d81b60', tY: 975, w: 840,
-    foot: ['Kelas A MBS · 2023', 1235, '#ad1457'],
-    th: { bg: '#fff0f5', line: '#f48fb1', num: '#d81b60', lab: '#ad1457' },
-    bg() {
-      ctx.fillStyle = grad('#fce4ec', '#f8bbd0'); ctx.fillRect(0, 0, W, H);
-      ctx.font = '56px ' + EMO; ctx.textAlign = 'center'; ctx.fillStyle = '#000';
-      for (let i = 0; i < 10; i++) ctx.fillText(i % 2 ? '💗' : '🌸', i % 2 ? 1045 : 35, 110 + i * 125);
-      ctx.fillStyle = '#fff'; rr(70, 70, 940, 1210, 60); ctx.fill();
-    }
-  },
-  { // 4 Neon
-    cx: 540, p: [130, 130, 820, 700], shape: 'rect', capY: 930, capC: '#00e5ff', tY: 975, w: 820,
-    foot: ['KELAS A · MBS · 2023', 1235, '#ff80ab'],
-    th: { bg: 'rgba(0,229,255,.08)', line: '#ff4081', num: '#00e5ff', lab: '#ff80ab' },
-    bg() {
-      ctx.fillStyle = '#0d0d1a'; ctx.fillRect(0, 0, W, H);
-      ctx.save(); ctx.strokeStyle = grad('#ff4081', '#00e5ff'); ctx.lineWidth = 10; ctx.shadowColor = '#ff4081'; ctx.shadowBlur = 40;
-      rr(60, 60, 960, 1230, 40); ctx.stroke(); rr(118, 118, 844, 724, 12); ctx.stroke(); ctx.restore();
-    }
-  },
-  { // 5 Film
-    cx: 540, p: [130, 130, 820, 720], shape: 'rect', capY: 940, capC: '#fff', tY: 985, w: 820,
-    foot: ['🎞️ KELAS A MBS 2023', 1245, '#9e9e9e'],
-    th: { bg: '#222', line: '#ffb300', num: '#ffb300', lab: '#bdbdbd' },
-    bg() {
-      ctx.fillStyle = '#111'; ctx.fillRect(0, 0, W, H);
-      ctx.fillStyle = '#f5f5f5'; for (let y = 40; y < H; y += 96) { rr(26, y, 44, 60, 10); ctx.fill(); rr(W - 70, y, 44, 60, 10); ctx.fill(); }
-      ctx.fillStyle = '#fafafa'; ctx.fillRect(120, 120, 840, 740);
-    }
-  },
-  { // 6 Koran
-    cx: 540, p: [130, 310, 820, 560], shape: 'rect', gray: true, capY: 960, capC: '#222', capF: SERIF, tY: 1000, w: 820,
-    foot: ['Kabar kebahagiaan hari ini', 1255, '#555'],
-    th: { bg: '#fff8e1', line: '#333', num: '#111', lab: '#555' },
-    bg() {
-      ctx.fillStyle = '#f3ead3'; ctx.fillRect(0, 0, W, H);
-      txt('MBS TIMES', W / 2, 190, 130, '#222', SERIF);
-      ctx.fillStyle = '#222'; ctx.fillRect(80, 215, 920, 6); ctx.fillRect(80, 230, 920, 2);
-      txt('EDISI WISUDA · KELAS A · 2023', W / 2, 282, 34, '#333', SERIF);
-    }
-  },
-  { // 7 Emas
-    cx: 540, p: [150, 150, 780, 680], shape: 'rect', capY: 925, capC: '#ffd54f', tY: 970, w: 780,
-    foot: ['✦ ANGKATAN 2023 ✦', 1240, '#d4af37'],
-    th: { bg: 'rgba(212,175,55,.12)', line: '#d4af37', num: '#ffe082', lab: '#d4af37' },
-    bg() {
-      ctx.fillStyle = grad('#0d1b3e', '#1a237e'); ctx.fillRect(0, 0, W, H);
-      ctx.strokeStyle = '#d4af37'; ctx.lineWidth = 8; rr(50, 50, 980, 1250, 20); ctx.stroke();
-      ctx.lineWidth = 3; rr(75, 75, 930, 1200, 12); ctx.stroke();
+    { // 2 Binder
+      cx: 580, p: [200, 180, 760, 660], shape: 'rect', capY: 935, capC: '#e91e63', tY: 975, w: 760,
+      foot: ['Kelas A MBS · 2023', 1240, '#8d6e63'],
+      th: { bg: '#fff', line: '#64b5f6', num: '#1976d2', lab: '#ff4081' },
+      bg() {
+        ctx.fillStyle = '#fffdf5'; ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = '#b3e5fc'; for (let y = 120; y < H; y += 60) ctx.fillRect(0, y, W, 3);
+        ctx.fillStyle = '#ffcdd2'; ctx.fillRect(130, 0, 6, H);
+        ctx.fillStyle = '#d7ccc8'; for (let y = 100; y < H; y += 180) { ctx.beginPath(); ctx.arc(60, y, 26, 0, 7); ctx.fill(); }
+        ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.2)'; ctx.shadowBlur = 24; ctx.shadowOffsetY = 10; ctx.fillStyle = '#fff'; ctx.fillRect(180, 160, 800, 700); ctx.restore();
+      },
+      top() { tape(580, 160, -.05); }
     },
-    top() { ctx.strokeStyle = '#d4af37'; ctx.lineWidth = 10; ctx.strokeRect(150, 150, 780, 680); }
-  }
-];
+    { // 3 Pink
+      cx: 540, p: [120, 120, 840, 700], shape: 'round', capY: 930, capC: '#d81b60', tY: 975, w: 840,
+      foot: ['Kelas A MBS · 2023', 1235, '#ad1457'],
+      th: { bg: '#fff0f5', line: '#f48fb1', num: '#d81b60', lab: '#ad1457' },
+      bg() {
+        ctx.fillStyle = grad('#fce4ec', '#f8bbd0'); ctx.fillRect(0, 0, W, H);
+        ctx.font = '56px ' + EMO; ctx.textAlign = 'center'; ctx.fillStyle = '#000';
+        for (let i = 0; i < 10; i++) ctx.fillText(i % 2 ? '💗' : '🌸', i % 2 ? 1045 : 35, 110 + i * 125);
+        ctx.fillStyle = '#fff'; rr(70, 70, 940, 1210, 60); ctx.fill();
+      }
+    },
+    { // 4 Neon
+      cx: 540, p: [130, 130, 820, 700], shape: 'rect', capY: 930, capC: '#00e5ff', tY: 975, w: 820,
+      foot: ['KELAS A · MBS · 2023', 1235, '#ff80ab'],
+      th: { bg: 'rgba(0,229,255,.08)', line: '#ff4081', num: '#00e5ff', lab: '#ff80ab' },
+      bg() {
+        ctx.fillStyle = '#0d0d1a'; ctx.fillRect(0, 0, W, H);
+        ctx.save(); ctx.strokeStyle = grad('#ff4081', '#00e5ff'); ctx.lineWidth = 10; ctx.shadowColor = '#ff4081'; ctx.shadowBlur = 40;
+        rr(60, 60, 960, 1230, 40); ctx.stroke(); rr(118, 118, 844, 724, 12); ctx.stroke(); ctx.restore();
+      }
+    },
+    { // 5 Film
+      cx: 540, p: [130, 130, 820, 720], shape: 'rect', capY: 940, capC: '#fff', tY: 985, w: 820,
+      foot: ['🎞️ KELAS A MBS 2023', 1245, '#9e9e9e'],
+      th: { bg: '#222', line: '#ffb300', num: '#ffb300', lab: '#bdbdbd' },
+      bg() {
+        ctx.fillStyle = '#111'; ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = '#f5f5f5'; for (let y = 40; y < H; y += 96) { rr(26, y, 44, 60, 10); ctx.fill(); rr(W - 70, y, 44, 60, 10); ctx.fill(); }
+        ctx.fillStyle = '#fafafa'; ctx.fillRect(120, 120, 840, 740);
+      }
+    },
+    { // 6 Koran
+      cx: 540, p: [130, 310, 820, 560], shape: 'rect', gray: true, capY: 960, capC: '#222', capF: SERIF, tY: 1000, w: 820,
+      foot: ['Kabar kebahagiaan hari ini', 1255, '#555'],
+      th: { bg: '#fff8e1', line: '#333', num: '#111', lab: '#555' },
+      bg() {
+        ctx.fillStyle = '#f3ead3'; ctx.fillRect(0, 0, W, H);
+        txt('MBS TIMES', W / 2, 190, 130, '#222', SERIF);
+        ctx.fillStyle = '#222'; ctx.fillRect(80, 215, 920, 6); ctx.fillRect(80, 230, 920, 2);
+        txt('EDISI WISUDA · KELAS A · 2023', W / 2, 282, 34, '#333', SERIF);
+      }
+    },
+    { // 7 Emas
+      cx: 540, p: [150, 150, 780, 680], shape: 'rect', capY: 925, capC: '#ffd54f', tY: 970, w: 780,
+      foot: ['✦ ANGKATAN 2023 ✦', 1240, '#d4af37'],
+      th: { bg: 'rgba(212,175,55,.12)', line: '#d4af37', num: '#ffe082', lab: '#d4af37' },
+      bg() {
+        ctx.fillStyle = grad('#0d1b3e', '#1a237e'); ctx.fillRect(0, 0, W, H);
+        ctx.strokeStyle = '#d4af37'; ctx.lineWidth = 8; rr(50, 50, 980, 1250, 20); ctx.stroke();
+        ctx.lineWidth = 3; rr(75, 75, 930, 1200, 12); ctx.stroke();
+      },
+      top() { ctx.strokeStyle = '#d4af37'; ctx.lineWidth = 10; ctx.strokeRect(150, 150, 780, 680); }
+    }
+  ];
 
-const render = () => {
-  const cap = $('fr-cap').value.trim() || "MBS A '23", S = STYLES[style];
-  ctx.clearRect(0, 0, W, H);
-  S.bg();
-  if (S.gray) ctx.filter = 'grayscale(1)';
-  photo(S.p[0], S.p[1], S.p[2], S.p[3], S.shape);
-  ctx.filter = 'none';
-  if (S.top) S.top();
-  txt(cap, S.cx, S.capY, 100, S.capC, S.capF);
-  timerBox(S.cx, S.tY, S.w, S.th);
-  txt(S.foot[0], S.cx, S.foot[1], 48, S.foot[2], SANS);
-  stickers(S.p[0], S.p[1], S.p[2], S.p[3]);
-};
+  const render = () => {
+    const cap = $('fr-cap').value.trim() || "MBS A '23", S = STYLES[style];
+    ctx.clearRect(0, 0, W, H);
+    S.bg();
+    if (S.gray) ctx.filter = 'grayscale(1)';
+    photo(S.p[0], S.p[1], S.p[2], S.p[3], S.shape);
+    ctx.filter = 'none';
+    if (S.top) S.top();
+    txt(cap, S.cx, S.capY, 100, S.capC, S.capF);
+    timerBox(S.cx, S.tY, S.w, S.th);
+    txt(S.foot[0], S.cx, S.foot[1], 48, S.foot[2], SANS);
+    stickers(S.p[0], S.p[1], S.p[2], S.p[3]);
+  };
 
   const camUI = on => { $('fr-snap').hidden = !on; $('fr-flip').hidden = !on; };
   const stopCam = () => { if (stream) stream.getTracks().forEach(t => t.stop()); stream = null; vid.srcObject = null; camUI(false); };
@@ -1375,20 +1414,20 @@ const render = () => {
   }, 'image/png');
 
   let lastSec = 0;
-const tick = () => {
-  if (me !== frameLoop || !screens[ids.indexOf('frame')].classList.contains('on')) { stopCam(); return; }
-  const sec = Math.floor(Date.now() / 1000);
-  if (stream || dirty || sec !== lastSec) { lastSec = sec; render(); dirty = false; }
-  requestAnimationFrame(tick);
-};
+  const tick = () => {
+    if (me !== frameLoop || !screens[ids.indexOf('frame')].classList.contains('on')) { stopCam(); return; }
+    const sec = Math.floor(Date.now() / 1000);
+    if (stream || dirty || sec !== lastSec) { lastSec = sec; render(); dirty = false; }
+    requestAnimationFrame(tick);
+  };
   requestAnimationFrame(tick);
   $('frb').onclick = advance;
   unlock();
 };
 
 /* ================= VIDEO ================= */
+// Musik otomatis berhenti & lanjut lewat syncAudio() di show()
 initFn.video = () => {
-  if (musicOn) toggleMusic();
   const v = $('vid-main'); v.pause(); v.currentTime = 0;
   unlock();
 };
